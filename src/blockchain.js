@@ -62,22 +62,26 @@
       * that this method is a private method. 
       */
      _addBlock(block) {
+        validateChain() 
          let self = this;
          return new Promise(async (resolve, reject) => {
-             if (block.body) {
+             if(block.body) {
                  let chainHeight = await this.getChainHeight();
                  block.height = chainHeight + 1;
                  block.time = new Date().getTime().toString().slice(0, -3);
-                 if (block.height > 0) {
-                     let prevBlock = await self.getBlockByHeight(chainHeight);
-                     block.previousBlockHash = prevBlock.hash;
+ 
+                 if(block.height > 0) {
+                     block.previousBlockHash = this.chain[this.chain.length - 1].hash;
                  }
+                 
                  block.hash = SHA256(JSON.stringify(block)).toString();
+ 
                  self.chain.push(block);
-                 self.height++;
-                 resolve(block)
+                 self.height = self.chain.length;
+ 
+                 resolve(block);
              }
-             resolve(null);
+             reject(null);
          });
      }
  
@@ -91,7 +95,7 @@
       */
      requestMessageOwnershipVerification(address) {
          return new Promise((resolve) => {
-             resolve(`${address}:${new Date().getTime().toString().slice(0, -3)}:starRegistry`)
+             resolve(`${address}:${new Date().getTime().toString().slice(0, -3)}:starRegistry`);
          });
      }
  
@@ -115,26 +119,36 @@
      submitStar(address, message, signature, star) {
          let self = this;
          return new Promise(async (resolve, reject) => {
-             if (message.split(':').length === 3) {
-                 let timestamp = parseInt(message.split(':')[1])
-                 let currentTime = parseInt(new Date().getTime().toString().slice(0, -3));
-                 if (currentTime - timestamp <= 30) {
+             let time = parseInt(message.split(':')[1])
+             let currentTime = parseInt(new Date().getTime().toString().slice(0, -3));
+             const timeInMinutes = Math.floor(time / 60000);
+             const currentTimeInMinutes = Math.floor(currentTime / 60000);
+             if (currentTimeInMinutes - timeInMinutes <= 5) {
+                 try{
                      let isValid = bitcoinMessage.verify(message, address, signature);
                      if (isValid) {
                          const block = await self._addBlock(new BlockClass.Block({
-                             owner: address,
+                             address: address,
                              data: star
                          }));
                          if (block) {
-                             resolve(block)
+                             self.chain.push(block);
+                             resolve(block);
                          }
-                         resolve(null)
+                         reject({
+                             error: "The block could not be added"
+                         })
                      }
-                     resolve(null)
                  }
-                 resolve(null)
+                 catch(e){
+                     reject({
+                         error: "There was an error trying to validate: " + e.message
+                     })
+                 }
              }
-             resolve(null)
+             reject({
+                 error: "The time elapsed is higher than 5 minutes"
+             })
          });
      }
  
@@ -147,12 +161,13 @@
      getBlockByHash(hash) {
          let self = this;
          return new Promise((resolve, reject) => {
-             for (const block of self.chain) {
-                 if (block.hash === hash) {
-                     resolve(block);
-                 }
+             let block = self.chain.filter(element => element.hash === hash)[0];
+ 
+             if(block){
+                 resolve(block);
              }
-             resolve(null)
+ 
+             resolve(null);
          });
      }
  
@@ -163,13 +178,13 @@
       */
      getBlockByHeight(height) {
          let self = this;
-         return new Promise(async (resolve, reject) => {
-             for (const block of self.chain) {
-                 if (block.height === height) {
-                     resolve(block)
-                 }
+         return new Promise((resolve, reject) => {
+             let block = self.chain.filter(p => p.height === height)[0];
+             if(block){
+                 resolve(block);
+             } else {
+                 resolve(null);
              }
-             resolve(null)
          });
      }
  
@@ -183,13 +198,14 @@
          let self = this;
          let stars = [];
          return new Promise(async (resolve, reject) => {
-             for (const block of self.chain) {
-                 const blockData = await block.getBData();
-                 if (blockData && blockData.owner === address) {
+             await Promise.all(self.chain.map(async (block) => {
+                 const blockData = block.getBData(); //removed the await
+                 if (blockData && blockData.address === address) {
                      stars.push(blockData)
                  }
-             }
-             resolve(stars)
+             }))
+ 
+             resolve(stars);
          });
      }
  
@@ -204,16 +220,16 @@
          let errorLog = [];
          return new Promise(async (resolve, reject) => {
              let prevBlockHash = null
-             for (const block of self.chain) {
-                 const isValid = await block.validate();
+             await Promise.all(self.chain.map(async (block) => {
+                 const isValid = block.validate(); //removed the await
                  if (!isValid || block.previousBlockHash !== prevBlockHash) {
                      errorLog.push({
                          block,
-                         error: "Unable to validate block"
+                         error: "It was not possible to validate the block"
                      })
                  }
-                 prevBlockHash = block.prevBlockHash;
-             }
+                 prevBlockHash = block.previousBlockHash;
+             }))
              resolve(errorLog)
          });
      }

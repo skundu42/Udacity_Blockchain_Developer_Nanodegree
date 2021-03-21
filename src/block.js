@@ -44,7 +44,7 @@
  
              // Recalculate the hash of the Block
              const validBlockHash = SHA256(JSON.stringify(self)).toString();
-             self.hash = validBlockHash
+             self.hash = blockHash
  
              // Comparing if the hashes changed
              if (blockHash === validBlockHash) {
