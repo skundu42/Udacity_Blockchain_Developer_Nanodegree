@@ -62,7 +62,7 @@
       * that this method is a private method. 
       */
      _addBlock(block) {
-        validateChain() 
+        
          let self = this;
          return new Promise(async (resolve, reject) => {
              if(block.body) {
@@ -78,6 +78,11 @@
  
                  self.chain.push(block);
                  self.height = self.chain.length;
+                 let errorLog = await self.validateChain();
+
+                if(errorLog.length !== 0) {
+                reject(new Error("Block can not be added because chain is not valid"));
+                 }
  
                  resolve(block);
              }
